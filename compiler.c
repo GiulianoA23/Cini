@@ -28,7 +28,8 @@ typedef enum {
     TOKEN_GREATER,
     TOKEN_LESS,
     TOKEN_GREATER_EQUALS,
-    TOKEN_LESS_EQUALS
+    TOKEN_LESS_EQUALS,
+    TOKEN_NEWLINE // Nuevo token para representar el fin de línea
 } TokenType;
 
 // Estructura para tokens
@@ -256,6 +257,9 @@ Token* getNextToken(Lexer* lexer) {
         case ';':
             token->type = TOKEN_SEMICOLON;
             break;
+        case '\n':
+            token->type = TOKEN_NEWLINE;
+            break;
         default:
             printf("Error: Carácter no reconocido '%c'\n", current);
             exit(1);
@@ -411,6 +415,9 @@ void compile(char* source) {
                 }
                 break;
             }
+            case TOKEN_NEWLINE:
+                // Ignorar saltos de línea
+                break;
         }
     }
     
