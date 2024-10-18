@@ -2,7 +2,7 @@ name: Build SwiftC Compiler
 
 on:
   push:
-    branches: [ "main", "develop" ]
+    branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
   workflow_dispatch:
@@ -103,12 +103,3 @@ jobs:
           - Linux build
           - macOS build
           - Windows build
-
-    - name: Cache Build
-      uses: actions/cache@v3
-      with:
-        path: |
-          build/
-        key: ${{ runner.os }}-build-${{ hashFiles('**/*.c') }}
-        restore-keys: |
-          ${{ runner.os }}-build-
