@@ -2,10 +2,17 @@ name: Build SwiftC Compiler
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "develop" ]
   pull_request:
     branches: [ "main" ]
   workflow_dispatch:
+
+# Agregamos los permisos necesarios
+permissions:
+  contents: write
+  discussions: write
+  issues: write
+  pull-requests: write
 
 jobs:
   build:
@@ -69,7 +76,7 @@ jobs:
         ./swiftc${{ matrix.os == 'windows-latest' && '.exe' || '' }} ../tests/test1.swc
       
     - name: Create Release Artifact
-      uses: actions/upload-artifact@v4.4.3
+      uses: actions/upload-artifact@v3
       with:
         name: swiftc-${{ matrix.os }}
         path: |
@@ -78,17 +85,24 @@ jobs:
           LICENSE
 
     - name: Create Release
-      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-      uses: softprops/action-gh-release@v1
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main' && matrix.os == 'ubuntu-latest'
+      uses: ncipollo/release-action@v1
       with:
-        files: |
-          build/swiftc${{ matrix.os == 'windows-latest' && '.exe' || '' }}
-        name: SwiftC ${{ github.sha }}
-        tag_name: v${{ github.run_number }}
-        draft: false
-        prerelease: false
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        artifacts: "build/swiftc*"
+        token: ${{ secrets.GITHUB_TOKEN }}
+        name: "SwiftC Release ${{ github.ref_name }}"
+        tag: "v${{ github.run_number }}"
+        body: |
+          SwiftC Compiler Release
+          
+          Changes in this release:
+          - Compiled for multiple platforms
+          - Latest updates from main branch
+          
+          Artifacts included:
+          - Linux build
+          - macOS build
+          - Windows build
 
     - name: Cache Build
       uses: actions/cache@v3
