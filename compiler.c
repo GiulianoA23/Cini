@@ -1,10 +1,8 @@
-// SwiftC - Un lenguaje de programación simple y optimizado
-// Compilador implementado en C
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <errno.h>
 
 // Definición de tipos de tokens
 typedef enum {
@@ -18,8 +16,19 @@ typedef enum {
     TOKEN_ASSIGN,
     TOKEN_SEMICOLON,
     TOKEN_IF,
+    TOKEN_ELSE,
     TOKEN_WHILE,
-    TOKEN_PRINT
+    TOKEN_PRINT,
+    TOKEN_LBRACE,
+    TOKEN_RBRACE,
+    TOKEN_LPAREN,
+    TOKEN_RPAREN,
+    TOKEN_EQUALS,
+    TOKEN_NOT_EQUALS,
+    TOKEN_GREATER,
+    TOKEN_LESS,
+    TOKEN_GREATER_EQUALS,
+    TOKEN_LESS_EQUALS
 } TokenType;
 
 // Estructura para tokens
@@ -49,6 +58,10 @@ int symbolCount = 0;
 // Inicializar lexer
 Lexer* initLexer(char* source) {
     Lexer* lexer = (Lexer*)malloc(sizeof(Lexer));
+    if (!lexer) {
+        printf("Error: No hay suficiente memoria para el lexer\n");
+        exit(1);
+    }
     lexer->source = source;
     lexer->position = 0;
     lexer->length = strlen(source);
@@ -80,34 +93,44 @@ Token* readNumber(Lexer* lexer) {
     char buffer[256];
     int i = 0;
     
-    while (isdigit(peek(lexer))) {
+    while (isdigit(peek(lexer)) && i < 255) {
         buffer[i++] = peek(lexer);
         advance(lexer);
     }
     buffer[i] = '\0';
     
     Token* token = (Token*)malloc(sizeof(Token));
+    if (!token) {
+        printf("Error: No hay suficiente memoria para el token\n");
+        exit(1);
+    }
     token->type = TOKEN_NUMBER;
     token->value = strdup(buffer);
     return token;
 }
 
-// Leer identificador
+// Leer identificador o palabra clave
 Token* readIdentifier(Lexer* lexer) {
     char buffer[256];
     int i = 0;
     
-    while (isalnum(peek(lexer)) || peek(lexer) == '_') {
+    while ((isalnum(peek(lexer)) || peek(lexer) == '_') && i < 255) {
         buffer[i++] = peek(lexer);
         advance(lexer);
     }
     buffer[i] = '\0';
     
     Token* token = (Token*)malloc(sizeof(Token));
+    if (!token) {
+        printf("Error: No hay suficiente memoria para el token\n");
+        exit(1);
+    }
     
     // Palabras clave
     if (strcmp(buffer, "if") == 0) {
         token->type = TOKEN_IF;
+    } else if (strcmp(buffer, "else") == 0) {
+        token->type = TOKEN_ELSE;
     } else if (strcmp(buffer, "while") == 0) {
         token->type = TOKEN_WHILE;
     } else if (strcmp(buffer, "print") == 0) {
@@ -120,12 +143,25 @@ Token* readIdentifier(Lexer* lexer) {
     return token;
 }
 
+// Verificar operador de dos caracteres
+int isDoubleOperator(Lexer* lexer, char first, char second) {
+    if (peek(lexer) == second) {
+        advance(lexer);
+        return 1;
+    }
+    return 0;
+}
+
 // Obtener siguiente token
 Token* getNextToken(Lexer* lexer) {
     skipWhitespace(lexer);
     
     if (lexer->position >= lexer->length) {
         Token* token = (Token*)malloc(sizeof(Token));
+        if (!token) {
+            printf("Error: No hay suficiente memoria para el token\n");
+            exit(1);
+        }
         token->type = TOKEN_EOF;
         token->value = NULL;
         return token;
@@ -142,7 +178,16 @@ Token* getNextToken(Lexer* lexer) {
     }
     
     Token* token = (Token*)malloc(sizeof(Token));
+    if (!token) {
+        printf("Error: No hay suficiente memoria para el token\n");
+        exit(1);
+    }
     token->value = (char*)malloc(2);
+    if (!token->value) {
+        free(token);
+        printf("Error: No hay suficiente memoria para el valor del token\n");
+        exit(1);
+    }
     token->value[0] = current;
     token->value[1] = '\0';
     
@@ -160,7 +205,53 @@ Token* getNextToken(Lexer* lexer) {
             token->type = TOKEN_DIVIDE;
             break;
         case '=':
-            token->type = TOKEN_ASSIGN;
+            advance(lexer);
+            if (peek(lexer) == '=') {
+                token->type = TOKEN_EQUALS;
+                advance(lexer);
+            } else {
+                token->type = TOKEN_ASSIGN;
+            }
+            break;
+        case '!':
+            advance(lexer);
+            if (peek(lexer) == '=') {
+                token->type = TOKEN_NOT_EQUALS;
+                advance(lexer);
+            } else {
+                printf("Error: Carácter inesperado después de '!'\n");
+                exit(1);
+            }
+            break;
+        case '>':
+            advance(lexer);
+            if (peek(lexer) == '=') {
+                token->type = TOKEN_GREATER_EQUALS;
+                advance(lexer);
+            } else {
+                token->type = TOKEN_GREATER;
+            }
+            break;
+        case '<':
+            advance(lexer);
+            if (peek(lexer) == '=') {
+                token->type = TOKEN_LESS_EQUALS;
+                advance(lexer);
+            } else {
+                token->type = TOKEN_LESS;
+            }
+            break;
+        case '{':
+            token->type = TOKEN_LBRACE;
+            break;
+        case '}':
+            token->type = TOKEN_RBRACE;
+            break;
+        case '(':
+            token->type = TOKEN_LPAREN;
+            break;
+        case ')':
+            token->type = TOKEN_RPAREN;
             break;
         case ';':
             token->type = TOKEN_SEMICOLON;
@@ -181,7 +272,19 @@ void addSymbol(char* name, int value) {
         exit(1);
     }
     
+    // Verificar si el símbolo ya existe
+    for (int i = 0; i < symbolCount; i++) {
+        if (strcmp(symbolTable[i].name, name) == 0) {
+            symbolTable[i].value = value;
+            return;
+        }
+    }
+    
     symbolTable[symbolCount].name = strdup(name);
+    if (!symbolTable[symbolCount].name) {
+        printf("Error: No hay suficiente memoria para el símbolo\n");
+        exit(1);
+    }
     symbolTable[symbolCount].value = value;
     symbolCount++;
 }
@@ -197,6 +300,20 @@ int findSymbol(char* name) {
     exit(1);
 }
 
+// Evaluador de expresiones
+int evaluate(Token* token, Lexer* lexer) {
+    if (token->type == TOKEN_NUMBER) {
+        return atoi(token->value);
+    }
+    
+    if (token->type == TOKEN_IDENTIFIER) {
+        return findSymbol(token->value);
+    }
+    
+    printf("Error: Token inesperado en evaluación\n");
+    exit(1);
+}
+
 // Compilador principal
 void compile(char* source) {
     Lexer* lexer = initLexer(source);
@@ -204,56 +321,155 @@ void compile(char* source) {
     
     while ((token = getNextToken(lexer))->type != TOKEN_EOF) {
         switch (token->type) {
-            case TOKEN_IDENTIFIER:
-                // Manejo de identificadores
-                printf("Identificador: %s\n", token->value);
+            case TOKEN_IDENTIFIER: {
+                char* name = strdup(token->value);
+                Token* next = getNextToken(lexer);
+                
+                if (next->type == TOKEN_ASSIGN) {
+                    Token* value = getNextToken(lexer);
+                    int result = evaluate(value, lexer);
+                    addSymbol(name, result);
+                    
+                    // Consumir punto y coma
+                    Token* semicolon = getNextToken(lexer);
+                    if (semicolon->type != TOKEN_SEMICOLON) {
+                        printf("Error: Se esperaba ';'\n");
+                        exit(1);
+                    }
+                }
+                free(name);
                 break;
-            case TOKEN_NUMBER:
-                // Manejo de números
-                printf("Número: %s\n", token->value);
+            }
+            case TOKEN_PRINT: {
+                Token* value = getNextToken(lexer);
+                int result = evaluate(value, lexer);
+                printf("%d\n", result);
+                
+                // Consumir punto y coma
+                Token* semicolon = getNextToken(lexer);
+                if (semicolon->type != TOKEN_SEMICOLON) {
+                    printf("Error: Se esperaba ';'\n");
+                    exit(1);
+                }
                 break;
-            case TOKEN_PRINT:
-                // Manejo de la instrucción print
-                printf("Instrucción print\n");
+            }
+            case TOKEN_IF: {
+                Token* condition = getNextToken(lexer);
+                int result = evaluate(condition, lexer);
+                
+                Token* lbrace = getNextToken(lexer);
+                if (lbrace->type != TOKEN_LBRACE) {
+                    printf("Error: Se esperaba '{'\n");
+                    exit(1);
+                }
+                
+                if (result) {
+                    // Ejecutar bloque if
+                    while ((token = getNextToken(lexer))->type != TOKEN_RBRACE) {
+                        // Procesar tokens dentro del bloque
+                    }
+                } else {
+                    // Saltar bloque if
+                    int braceCount = 1;
+                    while (braceCount > 0) {
+                        token = getNextToken(lexer);
+                        if (token->type == TOKEN_LBRACE) braceCount++;
+                        if (token->type == TOKEN_RBRACE) braceCount--;
+                    }
+                }
                 break;
-            // Agregar más casos según sea necesario
-            default:
-                printf("Token tipo: %d, valor: %s\n", token->type, token->value);
+            }
+            case TOKEN_WHILE: {
+                int startPos = lexer->position;
+                Token* condition = getNextToken(lexer);
+                int result = evaluate(condition, lexer);
+                
+                Token* lbrace = getNextToken(lexer);
+                if (lbrace->type != TOKEN_LBRACE) {
+                    printf("Error: Se esperaba '{'\n");
+                    exit(1);
+                }
+                
+                while (result) {
+                    // Ejecutar bloque while
+                    while ((token = getNextToken(lexer))->type != TOKEN_RBRACE) {
+                        // Procesar tokens dentro del bloque
+                    }
+                    
+                    // Volver al inicio del while
+                    lexer->position = startPos;
+                    condition = getNextToken(lexer);
+                    result = evaluate(condition, lexer);
+                }
+                
+                // Saltar bloque while cuando la condición es falsa
+                int braceCount = 1;
+                while (braceCount > 0) {
+                    token = getNextToken(lexer);
+                    if (token->type == TOKEN_LBRACE) braceCount++;
+                    if (token->type == TOKEN_RBRACE) braceCount--;
+                }
+                break;
+            }
         }
-        
-        free(token->value);
-        free(token);
     }
     
-    free(token);
     free(lexer);
 }
 
 int main(int argc, char** argv) {
     if (argc != 2) {
-        printf("Uso: %s <archivo_fuente>\n", argv[0]);
+        printf("Uso: swiftc <archivo_fuente>\n");
+        printf("Ejemplo: swiftc programa.swc\n");
         return 1;
     }
     
-    // Leer archivo fuente
+    // Leer archivo fuente con mejor manejo de errores
     FILE* file = fopen(argv[1], "r");
     if (!file) {
-        printf("Error: No se pudo abrir el archivo\n");
+        printf("Error al abrir el archivo '%s': %s\n", argv[1], strerror(errno));
         return 1;
     }
     
+    // Verificar extensión del archivo
+    char* extension = strrchr(argv[1], '.');
+    if (!extension || strcmp(extension, ".swc") != 0) {
+        printf("Error: El archivo debe tener extensión .swc\n");
+        fclose(file);
+        return 1;
+    }
+    
+    // Obtener tamaño del archivo
     fseek(file, 0, SEEK_END);
     long size = ftell(file);
+    if (size == 0) {
+        printf("Error: El archivo está vacío\n");
+        fclose(file);
+        return 1;
+    }
     fseek(file, 0, SEEK_SET);
     
+    // Leer contenido con verificación
     char* source = (char*)malloc(size + 1);
-    fread(source, 1, size, file);
-    source[size] = '\0';
+    if (!source) {
+        printf("Error: No hay suficiente memoria\n");
+        fclose(file);
+        return 1;
+    }
     
+    size_t read = fread(source, 1, size, file);
+    if (read != size) {
+        printf("Error al leer el archivo: %s\n", strerror(errno));
+        free(source);
+        fclose(file);
+        return 1;
+    }
+    source[size] = '\0';
     fclose(file);
     
-    // Compilar el código
+    printf("Compilando %s...\n", argv[1]);
     compile(source);
+    printf("Compilación exitosa.\n");
     
     free(source);
     return 0;
