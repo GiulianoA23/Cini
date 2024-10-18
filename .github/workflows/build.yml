@@ -1,0 +1,100 @@
+name: Build SwiftC Compiler
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build SwiftC
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            compiler: gcc
+            build_command: gcc
+          - os: macos-latest
+            compiler: clang
+            build_command: clang
+          - os: windows-latest
+            compiler: cl
+            build_command: cl
+
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - name: Set up Build Environment (Ubuntu)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential gcc make
+
+    - name: Set up Build Environment (macOS)
+      if: matrix.os == 'macos-latest'
+      run: |
+        brew update
+        brew install llvm
+
+    - name: Set up Build Environment (Windows)
+      if: matrix.os == 'windows-latest'
+      uses: ilammy/msvc-dev-cmd@v1
+
+    - name: Configure Build Directory
+      run: |
+        mkdir build
+        cd build
+
+    - name: Build Compiler (Unix)
+      if: matrix.os != 'windows-latest'
+      run: |
+        cd build
+        ${{ matrix.build_command }} -o swiftc ../compiler.c -Wall -O2
+
+    - name: Build Compiler (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        cd build
+        ${{ matrix.build_command }} /Fe:swiftc.exe ..\compiler.c /O2
+
+    - name: Run Tests
+      run: |
+        cd build
+        ./swiftc${{ matrix.os == 'windows-latest' && '.exe' || '' }} ../tests/test1.swc
+      
+    - name: Create Release Artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: swiftc-${{ matrix.os }}
+        path: |
+          build/swiftc${{ matrix.os == 'windows-latest' && '.exe' || '' }}
+          README.md
+          LICENSE
+
+    - name: Create Release
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          build/swiftc${{ matrix.os == 'windows-latest' && '.exe' || '' }}
+        name: SwiftC ${{ github.sha }}
+        tag_name: v${{ github.run_number }}
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Cache Build
+      uses: actions/cache@v3
+      with:
+        path: |
+          build/
+        key: ${{ runner.os }}-build-${{ hashFiles('**/*.c') }}
+        restore-keys: |
+          ${{ runner.os }}-build-
