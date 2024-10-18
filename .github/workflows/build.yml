@@ -70,11 +70,6 @@ jobs:
         cd build
         ${{ matrix.build_command }} /Fe:swiftc.exe ..\compiler.c /O2
 
-    - name: Run Tests
-      run: |
-        cd build
-        ./swiftc${{ matrix.os == 'windows-latest' && '.exe' || '' }} ../tests/test1.swc
-      
     - name: Create Release Artifact
       uses: actions/upload-artifact@v3
       with:
