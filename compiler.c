@@ -301,42 +301,17 @@ int findSymbol(char* name) {
 }
 
 // Evaluador de expresiones
-int evaluateExpression(Lexer* lexer) {
-    Token* token = getNextToken(lexer);
-    int result = evaluate(token, lexer);
-    
-    Token* nextToken = getNextToken(lexer);
-    while (nextToken->type == TOKEN_PLUS || nextToken->type == TOKEN_MINUS || 
-           nextToken->type == TOKEN_MULTIPLY || nextToken->type == TOKEN_DIVIDE) {
-        Token* nextValue = getNextToken(lexer);
-        int value = evaluate(nextValue, lexer);
-        
-        switch (nextToken->type) {
-            case TOKEN_PLUS:
-                result += value;
-                break;
-            case TOKEN_MINUS:
-                result -= value;
-                break;
-            case TOKEN_MULTIPLY:
-                result *= value;
-                break;
-            case TOKEN_DIVIDE:
-                if (value == 0) {
-                    printf("Error: División por cero\n");
-                    exit(1);
-                }
-                result /= value;
-                break;
-            default:
-                break;
-        }
-        free(nextValue->value);
-        free(nextValue);
-        nextToken = getNextToken(lexer);
+int evaluate(Token* token, Lexer* lexer) {
+    if (token->type == TOKEN_NUMBER) {
+        return atoi(token->value);
     }
     
-    return result;
+    if (token->type == TOKEN_IDENTIFIER) {
+        return findSymbol(token->value);
+    }
+    
+    printf("Error: Token inesperado en evaluación\n");
+    exit(1);
 }
 
 // Compilador principal
@@ -391,8 +366,7 @@ void compile(char* source) {
                 if (result) {
                     // Ejecutar bloque if
                     while ((token = getNextToken(lexer))->type != TOKEN_RBRACE) {
-                        free(token->value);
-                        free(token);
+                        // Procesar tokens dentro del bloque
                     }
                 } else {
                     // Saltar bloque if
@@ -445,60 +419,56 @@ void compile(char* source) {
 
 int main(int argc, char** argv) {
     if (argc != 2) {
-        printf("Uso: cinic <archivo_fuente>\n");
-        printf("Ejemplo: cinic programa.cini\n");
+        fprintf(stderr, "Uso: %s <archivo_fuente>\n", argv[0]);
         return 1;
     }
-    
-    // Leer archivo fuente con mejor manejo de errores
-    FILE* file = fopen(argv[1], "r");
+
+    const char* filename = argv[1];
+    FILE* file = fopen(filename, "r");
     if (!file) {
-        printf("Error al abrir el archivo '%s': %s\n", argv[1], strerror(errno));
+        perror(filename);
         return 1;
     }
-    
+
     // Verificar extensión del archivo
-    char* extension = strrchr(argv[1], '.');
-    if (!extension || strcmp(extension, ".cini") != 0) {
-        printf("Error: El archivo debe tener extensión .cini\n");
+    if (strcmp(filename + strlen(filename) - 4, ".swc") != 0) {
+        fprintf(stderr, "Error: El archivo debe tener extensión .swc\n");
         fclose(file);
         return 1;
     }
 
-    
     // Obtener tamaño del archivo
     fseek(file, 0, SEEK_END);
-    long size = ftell(file);
-	if (size < 0) {
-    	printf("Error al determinar el tamaño del archivo: %s\n", strerror(errno));
-    	fclose(file);
-	    return 1;
-	}
-
-    fseek(file, 0, SEEK_SET);
-    
-    // Leer contenido con verificación
-    char* source = (char*)malloc(size + 1);
-    if (!source) {
-        printf("Error: No hay suficiente memoria\n");
+    size_t size = ftell(file);
+    if (size == 0) {
+        fprintf(stderr, "Error: El archivo está vacío\n");
         fclose(file);
         return 1;
     }
-    
+    fseek(file, 0, SEEK_SET);
+
+    // Leer contenido con verificación
+    char* source = malloc(size + 1);
+    if (!source) {
+        fprintf(stderr, "Error: No hay suficiente memoria\n");
+        fclose(file);
+        return 1;
+    }
+
     size_t read = fread(source, 1, size, file);
     if (read != size) {
-        printf("Error al leer el archivo: %s\n", strerror(errno));
+        perror("fread");
         free(source);
         fclose(file);
         return 1;
     }
     source[size] = '\0';
     fclose(file);
-    
-    printf("Compilando %s...\n", argv[1]);
+
+    printf("Compilando %s...\n", filename);
     compile(source);
     printf("Compilación exitosa.\n");
-    
+
     free(source);
     return 0;
 }
